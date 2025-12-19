@@ -122,6 +122,12 @@ local WIDGET_SPECS = {
         low = 1, high = 24, step = 1, suffix = "",
     },
     {
+        id = "quickCast",
+        title = "Quick Cast",
+        kind = "toggle",
+        hint = "Hold key to show wheel, release to activate the button under cursor.",
+    },
+    {
         id = "dismissOnUse",
         title = "Dismiss on Use",
         kind = "toggle",
