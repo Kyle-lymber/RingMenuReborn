@@ -127,10 +127,13 @@ function Addon:SetupSettingsPanel()
     local function RefreshWidget(spec)
         local w = spec.widget
         if not w then return end
-        local val = RadialWheelProfiles[panel.activeWheel][spec.id]
+        local profile = RadialWheelProfiles[panel.activeWheel]
+        if not profile then return end
+        local val = profile[spec.id]
 
         if spec.kind == "range" then
-            w:SetValue(val)
+            w:SetValue(val or spec.low)
+            _G[w:GetName() .. "Text"]:SetText(math.floor((val or spec.low) + 0.5) .. (spec.suffix or ""))
         elseif spec.kind == "toggle" then
             w:SetChecked(val)
         elseif spec.kind == "textbox" then
@@ -144,7 +147,9 @@ function Addon:SetupSettingsPanel()
         elseif spec.kind == "keybind" then
             w:SetText(GetBindingText(panel.activeWheel))
         elseif spec.kind == "colorpicker" then
-            w.swatch:SetVertexColor(val.red, val.green, val.blue, val.alpha)
+            if val then
+                w.swatch:SetVertexColor(val.red, val.green, val.blue, val.alpha)
+            end
         end
     end
 
@@ -164,31 +169,25 @@ function Addon:SetupSettingsPanel()
         local w
 
         if spec.kind == "range" then
-            w = CreateFrame("Slider", config:GetName() .. spec.id, config, "BackdropTemplate")
+            w = CreateFrame("Slider", config:GetName() .. spec.id, config, "OptionsSliderTemplate")
             w:SetPoint("LEFT", lbl, "RIGHT", 0, 0)
             w:SetSize(WIDGET_W, 17)
-            w:SetOrientation("HORIZONTAL")
-            w:SetBackdrop({
-                bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
-                edgeFile = "Interface\\Buttons\\UI-SliderBar-Border",
-                tile = true, tileSize = 8, edgeSize = 8,
-                insets = { left = 3, right = 3, top = 6, bottom = 6 }
-            })
-            w:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
             w:SetMinMaxValues(spec.low, spec.high)
             w:SetValueStep(spec.step or 1)
             w:SetObeyStepOnDrag(true)
 
-            local valText = w:CreateFontString(w:GetName() .. "Value", "ARTWORK", "GameFontHighlightSmall")
-            valText:SetPoint("TOP", w, "BOTTOM", 0, 0)
-
-            w:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"):SetPoint("TOPLEFT", w, "BOTTOMLEFT")
-            w:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"):SetPoint("TOPRIGHT", w, "BOTTOMRIGHT")
+            -- Hide the default labels
+            _G[w:GetName() .. "Low"]:SetText("")
+            _G[w:GetName() .. "High"]:SetText("")
+            _G[w:GetName() .. "Text"]:SetText("")
 
             w:SetScript("OnValueChanged", function(self, val, user)
-                _G[self:GetName() .. "Value"]:SetText(val .. (spec.suffix or ""))
-                if user then OnChange(spec, val) end
+                _G[self:GetName() .. "Text"]:SetText(math.floor(val + 0.5) .. (spec.suffix or ""))
+                if user then OnChange(spec, math.floor(val + 0.5)) end
             end)
+
+            -- Initialize with default value
+            w:SetValue(spec.low)
 
         elseif spec.kind == "toggle" then
             w = CreateFrame("CheckButton", nil, config)
@@ -316,6 +315,11 @@ function Addon:SetupSettingsPanel()
         end
     end
 
+    -- Refresh widgets when panel is shown
+    panel:SetScript("OnShow", function()
+        panel.UpdateWidgets()
+    end)
+
     local ver = C_AddOns and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or GetAddOnMetadata(ADDON_NAME, "Version")
     RadialWheelSettingsPanelHeader:SetText("RingMenu Reborn |cFF888888v" .. ver)
 
@@ -330,4 +334,7 @@ function Addon:SetupSettingsPanel()
     else
         InterfaceOptions_AddCategory(panel)
     end
+
+    -- Initial refresh
+    panel.UpdateWidgets()
 end

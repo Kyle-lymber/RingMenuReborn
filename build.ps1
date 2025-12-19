@@ -44,7 +44,7 @@ $StagingDir = Join-Path $StagingRoot $AddonID
 New-Item -ItemType Directory -Path $StagingDir | Out-Null
 
 # Addon file patterns
-$FilePatterns = @("*.lua", "*.xml", "*.tga", "*.toc")
+$FilePatterns = @("*.lua", "*.xml", "*.tga", "*.toc", "*.md")
 
 Write-Host "Including files:"
 foreach ($Pattern in $FilePatterns) {
