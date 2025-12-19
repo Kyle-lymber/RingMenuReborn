@@ -1,16 +1,6 @@
---[[
-    RingMenu Reborn - Core Module
-    A radial action wheel system for World of Warcraft Classic
-]]
-
 local ADDON_NAME, Addon = ...
 
--- Attempt to load Masque for button skinning
 local MasqueLib = LibStub and LibStub("Masque", true)
-
--------------------------------------------------------------------------------
--- Database Defaults
--------------------------------------------------------------------------------
 
 local DATABASE_DEFAULTS = {
     wheelCount = 1,
@@ -21,46 +11,36 @@ local WHEEL_DEFAULTS = {
     label = nil,
     binding = nil,
     dismissOnUse = true,
-    quickCast = false,  -- Hold key, release to activate hovered button
+    quickCast = false,
     size = 100,
     rotation = 0,
     slotStart = 13,
     slotCount = 12,
     bgSize = 1.5,
-    bgTint = { red = 0.0, green = 0.0, blue = 0.0, alpha = 0.5 },
+    bgTint = { red = 0, green = 0, blue = 0, alpha = 0.5 },
 }
 
--------------------------------------------------------------------------------
--- Internal State
--------------------------------------------------------------------------------
+local TWO_PI = math.pi * 2
+local DEAD_ZONE_RADIUS = 20
 
-Addon.wheels = {}
 Addon.frames = {}
-Addon.activeQuickCast = nil  -- Tracks which wheel is in quick cast mode
 
--- Persisted data (initialized on load)
 RadialWheelDB = RadialWheelDB or {}
 RadialWheelProfiles = RadialWheelProfiles or {}
 
--------------------------------------------------------------------------------
--- Utility Functions
--------------------------------------------------------------------------------
-
 local function CloneTable(source)
-    if type(source) ~= "table" then
-        return source
-    end
+    if type(source) ~= "table" then return source end
     local result = {}
-    for key, val in pairs(source) do
-        result[CloneTable(key)] = CloneTable(val)
+    for key, value in pairs(source) do
+        result[CloneTable(key)] = CloneTable(value)
     end
     return result
 end
 
 local function ApplyDefaults(target, defaults)
-    for key, defaultVal in pairs(defaults) do
+    for key, defaultValue in pairs(defaults) do
         if target[key] == nil then
-            target[key] = CloneTable(defaultVal)
+            target[key] = CloneTable(defaultValue)
         end
     end
 end
@@ -68,220 +48,146 @@ end
 Addon.CloneTable = CloneTable
 Addon.ApplyDefaults = ApplyDefaults
 
--------------------------------------------------------------------------------
--- Quick Cast Helpers
--------------------------------------------------------------------------------
-
--- Calculate which button index the mouse is pointing at based on angle from center
+-- Determines which slot the cursor is pointing at based on angle from wheel center
 local function GetHoveredSlot(container, profile)
     local centerX, centerY = container:GetCenter()
-    local mouseX, mouseY = GetCursorPosition()
-    local scale = container:GetEffectiveScale()
+    local cursorX, cursorY = GetCursorPosition()
+    local uiScale = container:GetEffectiveScale()
+    cursorX, cursorY = cursorX / uiScale, cursorY / uiScale
 
-    -- Adjust for UI scale
-    mouseX = mouseX / scale
-    mouseY = mouseY / scale
-
-    -- Vector from center to mouse
-    local dx = mouseX - centerX
-    local dy = mouseY - centerY
-
-    -- Check if mouse is too close to center (dead zone)
-    local dist = math.sqrt(dx * dx + dy * dy)
-    if dist < 20 then
+    local deltaX, deltaY = cursorX - centerX, cursorY - centerY
+    local distanceSquared = deltaX * deltaX + deltaY * deltaY
+    if distanceSquared < DEAD_ZONE_RADIUS * DEAD_ZONE_RADIUS then
         return nil
     end
 
-    -- Calculate angle (atan2 gives angle from positive X axis)
-    local mouseAngle = math.atan2(dy, dx)
-
-    -- Convert to 0-2pi range
-    if mouseAngle < 0 then
-        mouseAngle = mouseAngle + 2 * math.pi
+    local cursorAngle = math.atan2(deltaY, deltaX)
+    if cursorAngle < 0 then
+        cursorAngle = cursorAngle + TWO_PI
     end
 
-    -- Calculate which slot this angle corresponds to
-    -- Buttons start at top (90 degrees / pi/2) and go clockwise
-    -- The formula mirrors how buttons are positioned in BuildWheel
-    local slotCount = profile.slotCount
-    local rotationRad = profile.rotation * math.pi / 180
+    -- First button starts at top (90 deg) and goes clockwise
+    local rotationRadians = profile.rotation * math.pi / 180
+    local angleDifference = (math.pi / 2 - rotationRadians) - cursorAngle
+    while angleDifference < 0 do angleDifference = angleDifference + TWO_PI end
+    while angleDifference >= TWO_PI do angleDifference = angleDifference - TWO_PI end
 
-    -- Normalize angle relative to first button position
-    -- First button is at angle = 2*pi*(0.25 - rotation/360) = pi/2 - rotationRad
-    local firstButtonAngle = math.pi / 2 - rotationRad
-
-    -- Calculate angular difference
-    local angleDiff = firstButtonAngle - mouseAngle
-
-    -- Normalize to 0-2pi
-    while angleDiff < 0 do angleDiff = angleDiff + 2 * math.pi end
-    while angleDiff >= 2 * math.pi do angleDiff = angleDiff - 2 * math.pi end
-
-    -- Convert to slot index (each slot spans 2*pi/slotCount radians)
-    local slotAngle = 2 * math.pi / slotCount
-    local slot = math.floor(angleDiff / slotAngle) + 1
-
-    -- Clamp to valid range
-    if slot < 1 then slot = 1 end
-    if slot > slotCount then slot = slotCount end
-
-    return slot
+    local slotIndex = math.floor(angleDifference / (TWO_PI / profile.slotCount)) + 1
+    return math.max(1, math.min(slotIndex, profile.slotCount))
 end
 
--- Update visual highlight on hovered button
-local function UpdateQuickCastHighlight(container, profile, hoveredSlot)
+local function UpdateQuickCastHighlight(container, hoveredSlot)
     if not container.actions then return end
-
-    for i, btn in ipairs(container.actions) do
-        if i <= profile.slotCount then
-            if i == hoveredSlot then
-                -- Highlight the hovered button
-                btn:LockHighlight()
-            else
-                btn:UnlockHighlight()
-            end
+    for index, button in ipairs(container.actions) do
+        if index == hoveredSlot then
+            button:LockHighlight()
+        else
+            button:UnlockHighlight()
         end
     end
 end
 
--- Clear all highlights
 local function ClearQuickCastHighlight(container)
     if not container.actions then return end
-    for _, btn in ipairs(container.actions) do
-        btn:UnlockHighlight()
+    for _, button in ipairs(container.actions) do
+        button:UnlockHighlight()
     end
 end
 
--------------------------------------------------------------------------------
--- Wheel Management
--------------------------------------------------------------------------------
-
 function Addon:CreateWheel()
     RadialWheelDB.wheelCount = RadialWheelDB.wheelCount + 1
-    local idx = RadialWheelDB.wheelCount
-    RadialWheelProfiles[idx] = CloneTable(WHEEL_DEFAULTS)
+    local wheelIndex = RadialWheelDB.wheelCount
+    RadialWheelProfiles[wheelIndex] = CloneTable(WHEEL_DEFAULTS)
     self:BuildAllWheels()
-    return idx
+    return wheelIndex
 end
 
-function Addon:DestroyWheel(idx)
-    table.remove(RadialWheelProfiles, idx)
+function Addon:DestroyWheel(wheelIndex)
+    table.remove(RadialWheelProfiles, wheelIndex)
     RadialWheelDB.wheelCount = RadialWheelDB.wheelCount - 1
     self:BuildAllWheels()
 end
 
-function Addon:BuildWheel(idx)
-    self.frames = self.frames or {}
+function Addon:BuildWheel(wheelIndex)
+    local profile = RadialWheelProfiles[wheelIndex]
+    if not profile then return end
 
-    local profile = RadialWheelProfiles[idx]
+    if not self.frames[wheelIndex] then
+        local container = CreateFrame("Frame", "RadialWheel" .. wheelIndex, UIParent)
+        container.wheelIndex = wheelIndex
+        self.frames[wheelIndex] = container
 
-    -- Create frame if needed
-    if not self.frames[idx] then
-        local container = CreateFrame("Frame", "RadialWheel" .. idx, UIParent)
-        container.wheelIndex = idx
-        self.frames[idx] = container
+        local background = container:CreateTexture(nil, "BACKGROUND")
+        background:SetAllPoints()
+        background:SetTexture("Interface\\AddOns\\RingMenuReborn\\RingMenuBackdrop.tga")
+        container.background = background
 
-        -- Background texture layer
-        local bg = container:CreateTexture(container:GetName() .. "BG", "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetTexture("Interface\\AddOns\\RingMenuReborn\\RingMenuBackdrop.tga")
-        container.background = bg
+        local toggleButton = CreateFrame("Button", "RadialWheelToggle" .. wheelIndex, container, "SecureActionButtonTemplate,SecureHandlerBaseTemplate")
+        toggleButton:SetFrameRef("GameParent", UIParent)
+        toggleButton:RegisterForClicks("AnyDown", "AnyUp")
 
-        -- Secure toggle handler for keybinding
-        -- Use SecureActionButtonTemplate to execute actions, SecureHandlerBaseTemplate for SetFrameRef
-        local toggle = CreateFrame("Button", "RadialWheelToggle" .. idx, container, "SecureActionButtonTemplate,SecureHandlerBaseTemplate")
-        toggle:SetFrameRef("GameParent", UIParent)
-        toggle:SetFrameRef("wheel", container)
-        toggle:RegisterForClicks("AnyDown", "AnyUp")
-
-        -- PreClick runs before the action executes
-        -- On DOWN click: show the wheel, clear action type so nothing fires
-        -- On UP click: if quick cast, set action type so the hovered action fires
-        SecureHandlerWrapScript(toggle, "PreClick", toggle, [[
+        -- PreClick: On key down show wheel, on key up (quick cast) execute hovered action
+        SecureHandlerWrapScript(toggleButton, "PreClick", toggleButton, [[
             local wheel = self:GetParent()
-            local parent = self:GetFrameRef("GameParent")
-            local down = down  -- 'down' is true for key press, false for key release
+            local gameParent = self:GetFrameRef("GameParent")
 
             if down then
-                -- Key pressed - show the wheel
-                local totalWheels = self:GetAttribute("totalWheels")
-                local allowStacking = self:GetAttribute("allowStacking")
-
+                local totalWheels = self:GetAttribute("totalWheels") or 0
                 if wheel:IsShown() then
-                    -- If not quick cast mode, toggle off
                     if not self:GetAttribute("quickCast") then
                         wheel:Hide()
                     end
                 else
-                    if not allowStacking then
+                    if not self:GetAttribute("allowStacking") then
                         for i = 1, totalWheels do
-                            local other = self:GetFrameRef("wheel" .. i)
-                            if other then other:Hide() end
+                            local otherWheel = self:GetFrameRef("wheel" .. i)
+                            if otherWheel then otherWheel:Hide() end
                         end
                     end
-                    local mx, my = parent:GetMousePosition()
-                    local px = mx * parent:GetWidth()
-                    local py = my * parent:GetHeight()
+                    local mouseX, mouseY = gameParent:GetMousePosition()
                     wheel:ClearAllPoints()
-                    wheel:SetPoint("CENTER", parent, "BOTTOMLEFT", px, py)
+                    wheel:SetPoint("CENTER", gameParent, "BOTTOMLEFT", mouseX * gameParent:GetWidth(), mouseY * gameParent:GetHeight())
                     wheel:Show()
                 end
-
-                -- Clear action so nothing fires on key down
                 self:SetAttribute("type", nil)
                 self:SetAttribute("action", nil)
             else
-                -- Key released
                 if self:GetAttribute("quickCast") and wheel:IsShown() then
-                    -- Get the currently hovered slot and set up the action
                     local hoveredSlot = self:GetAttribute("quickcastslot")
                     if hoveredSlot then
-                        local btn = self:GetFrameRef("slot" .. hoveredSlot)
-                        if btn then
-                            local actionSlot = btn:GetAttribute("action")
-                            if actionSlot then
-                                self:SetAttribute("type", "action")
-                                self:SetAttribute("action", actionSlot)
-                            end
+                        local slotButton = self:GetFrameRef("slot" .. hoveredSlot)
+                        if slotButton then
+                            self:SetAttribute("type", "action")
+                            self:SetAttribute("action", slotButton:GetAttribute("action"))
                         end
                     end
                     wheel:Hide()
                 else
-                    -- Not quick cast mode - don't fire action on release
                     self:SetAttribute("type", nil)
                     self:SetAttribute("action", nil)
                 end
             end
         ]])
 
-        -- PostClick runs after the action - clear the action attributes
-        SecureHandlerWrapScript(toggle, "PostClick", toggle, [[
+        SecureHandlerWrapScript(toggleButton, "PostClick", toggleButton, [[
             self:SetAttribute("type", nil)
             self:SetAttribute("action", nil)
         ]])
 
-        container.toggle = toggle
+        container.toggle = toggleButton
 
-        -- OnUpdate for quick cast hover tracking (runs in insecure context)
         container:SetScript("OnUpdate", function(self)
             if not self:IsShown() then return end
-
-            local wheelIdx = self.wheelIndex
-            local profile = RadialWheelProfiles[wheelIdx]
-            if not profile or not profile.quickCast then
+            local wheelProfile = RadialWheelProfiles[self.wheelIndex]
+            if not wheelProfile or not wheelProfile.quickCast then
                 ClearQuickCastHighlight(self)
                 return
             end
-
-            local slot = GetHoveredSlot(self, profile)
-
-            -- Update the toggle button's attribute so PreClick can read it on key release
-            self.toggle:SetAttribute("quickcastslot", slot)
-
-            UpdateQuickCastHighlight(self, profile, slot)
+            local hoveredSlot = GetHoveredSlot(self, wheelProfile)
+            self.toggle:SetAttribute("quickcastslot", hoveredSlot)
+            UpdateQuickCastHighlight(self, hoveredSlot)
         end)
 
-        -- Clear highlights when hidden
         container:SetScript("OnHide", function(self)
             ClearQuickCastHighlight(self)
             self.toggle:SetAttribute("quickcastslot", nil)
@@ -290,39 +196,28 @@ function Addon:BuildWheel(idx)
         container:Hide()
     end
 
-    local container = self.frames[idx]
+    local container = self.frames[wheelIndex]
+    local frameDimension = 2 * profile.size * profile.bgSize
+    container:SetSize(frameDimension, frameDimension)
+    container.background:SetVertexColor(profile.bgTint.red, profile.bgTint.green, profile.bgTint.blue, profile.bgTint.alpha)
 
-    -- Apply profile settings
-    local dimension = 2 * profile.size * profile.bgSize
-    container:SetSize(dimension, dimension)
-    container.background:SetVertexColor(
-        profile.bgTint.red,
-        profile.bgTint.green,
-        profile.bgTint.blue,
-        profile.bgTint.alpha
-    )
     container.toggle:SetAttribute("allowStacking", RadialWheelDB.multipleWheelsOpen)
     container.toggle:SetAttribute("quickCast", profile.quickCast)
     container:SetAttribute("dismissOnUse", profile.dismissOnUse)
 
-    -- Create action buttons
     container.actions = container.actions or {}
-    for slot = 1, (profile.slotCount or 1) do
-        if not container.actions[slot] then
-            local btn = CreateFrame("CheckButton", container:GetName() .. "Slot" .. slot, container, "ActionBarButtonTemplate")
+    for slotIndex = 1, profile.slotCount do
+        if not container.actions[slotIndex] then
+            local actionButton = CreateFrame("CheckButton", container:GetName() .. "Slot" .. slotIndex, container, "ActionBarButtonTemplate")
+            actionButton.wheelIndex = wheelIndex
+            actionButton.slotIndex = slotIndex
+            container.actions[slotIndex] = actionButton
 
-            -- Register with Masque if available
             if MasqueLib then
-                local group = MasqueLib:Group("RingMenuReborn")
-                group:AddButton(btn)
+                MasqueLib:Group("RingMenuReborn"):AddButton(actionButton)
             end
 
-            btn.wheelIndex = idx
-            btn.slotIndex = slot
-            container.actions[slot] = btn
-
-            -- Wrap click to optionally dismiss wheel
-            container.toggle:WrapScript(btn, "OnClick", [[
+            container.toggle:WrapScript(actionButton, "OnClick", [[
                 local wheel = self:GetParent()
                 if wheel:GetAttribute("dismissOnUse") then
                     wheel:Hide()
@@ -330,90 +225,63 @@ function Addon:BuildWheel(idx)
             ]])
         end
 
-        local btn = container.actions[slot]
-
-        -- Calculate circular position
-        local theta = 2 * math.pi * (0.25 - (slot - 1) / profile.slotCount - profile.rotation / 360)
-        local xPos = profile.size * math.cos(theta)
-        local yPos = profile.size * math.sin(theta)
-
-        btn:ClearAllPoints()
-        btn:SetPoint("CENTER", container, "CENTER", xPos, yPos)
-        btn:SetAttribute("type", "action")
-        btn:SetAttribute("action", profile.slotStart + slot - 1)
-        btn:Show()
-
-        -- Add frame reference for secure quick cast activation
-        container.toggle:SetFrameRef("slot" .. slot, btn)
+        local actionButton = container.actions[slotIndex]
+        local buttonAngle = TWO_PI * (0.25 - (slotIndex - 1) / profile.slotCount - profile.rotation / 360)
+        actionButton:ClearAllPoints()
+        actionButton:SetPoint("CENTER", container, "CENTER", profile.size * math.cos(buttonAngle), profile.size * math.sin(buttonAngle))
+        actionButton:SetAttribute("type", "action")
+        actionButton:SetAttribute("action", profile.slotStart + slotIndex - 1)
+        actionButton:Show()
+        container.toggle:SetFrameRef("slot" .. slotIndex, actionButton)
     end
 
-    -- Hide excess buttons
-    for i, btn in ipairs(container.actions) do
-        if i > profile.slotCount then
-            btn:Hide()
-        end
+    for index = profile.slotCount + 1, #container.actions do
+        container.actions[index]:Hide()
     end
 end
 
 function Addon:LinkWheels()
-    local count = RadialWheelDB.wheelCount
-    for i = 1, count do
-        local container = self.frames[i]
+    local wheelCount = RadialWheelDB.wheelCount
+    for wheelIndex = 1, wheelCount do
+        local container = self.frames[wheelIndex]
         if container then
-            for j = 1, count do
-                local other = self.frames[j]
-                if other then
-                    container.toggle:SetFrameRef("wheel" .. j, other)
+            for otherIndex = 1, wheelCount do
+                if self.frames[otherIndex] then
+                    container.toggle:SetFrameRef("wheel" .. otherIndex, self.frames[otherIndex])
                 end
             end
-            container.toggle:SetAttribute("totalWheels", count)
+            container.toggle:SetAttribute("totalWheels", wheelCount)
         end
     end
 end
 
 function Addon:BuildAllWheels()
-    for i = 1, RadialWheelDB.wheelCount do
-        self:BuildWheel(i)
+    for wheelIndex = 1, RadialWheelDB.wheelCount do
+        self:BuildWheel(wheelIndex)
     end
     self:LinkWheels()
 end
 
--------------------------------------------------------------------------------
--- Event Handler
--------------------------------------------------------------------------------
-
 local EventFrame = CreateFrame("Frame")
 EventFrame:RegisterEvent("ADDON_LOADED")
-EventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
-    if event == "ADDON_LOADED" and loadedAddon == ADDON_NAME then
-        -- Initialize database with defaults
-        ApplyDefaults(RadialWheelDB, DATABASE_DEFAULTS)
+EventFrame:SetScript("OnEvent", function(_, event, loadedAddon)
+    if loadedAddon ~= ADDON_NAME then return end
 
-        for i = 1, RadialWheelDB.wheelCount do
-            RadialWheelProfiles[i] = RadialWheelProfiles[i] or {}
-            ApplyDefaults(RadialWheelProfiles[i], WHEEL_DEFAULTS)
-        end
-
-        -- Build wheel frames
-        Addon:BuildAllWheels()
-
-        -- Initialize settings panel
-        Addon:SetupSettingsPanel()
+    ApplyDefaults(RadialWheelDB, DATABASE_DEFAULTS)
+    for wheelIndex = 1, RadialWheelDB.wheelCount do
+        RadialWheelProfiles[wheelIndex] = RadialWheelProfiles[wheelIndex] or {}
+        ApplyDefaults(RadialWheelProfiles[wheelIndex], WHEEL_DEFAULTS)
     end
-end)
 
--------------------------------------------------------------------------------
--- Slash Commands
--------------------------------------------------------------------------------
+    Addon:BuildAllWheels()
+    Addon:SetupSettingsPanel()
+end)
 
 SLASH_RADIALWHEEL1 = "/rmr"
 SLASH_RADIALWHEEL2 = "/radialwheel"
-
-SlashCmdList["RADIALWHEEL"] = function(input)
-    if Settings and Settings.OpenToCategory then
-        if Addon.settingsCategoryID then
-            Settings.OpenToCategory(Addon.settingsCategoryID)
-        end
+SlashCmdList["RADIALWHEEL"] = function()
+    if Settings and Settings.OpenToCategory and Addon.settingsCategoryID then
+        Settings.OpenToCategory(Addon.settingsCategoryID)
     else
         InterfaceOptionsFrame_OpenToCategory("RingMenu Reborn")
         InterfaceOptionsFrame_OpenToCategory("RingMenu Reborn")
