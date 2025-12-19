@@ -1,92 +1,85 @@
-# Build script for RingMenuReborn
-# Creates a release zip file in the releases folder
+# RingMenu Reborn Build Script
+# Packages the addon for distribution
 
-$addonName = "RingMenuReborn"
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$releasesDir = Join-Path $scriptDir "releases"
+$AddonID = "RingMenuReborn"
+$BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$OutputDir = Join-Path $BaseDir "releases"
 
-# Read version from TOC file
-$tocPath = Join-Path $scriptDir "$addonName.toc"
-$tocContent = Get-Content $tocPath -Raw
-if ($tocContent -match '## Version:\s*(.+)') {
-    $version = $Matches[1].Trim()
+# Extract version from TOC
+$TocFile = Join-Path $BaseDir "$AddonID.toc"
+$TocData = Get-Content $TocFile -Raw
+if ($TocData -match '## Version:\s*(.+)') {
+    $Ver = $Matches[1].Trim()
 } else {
-    Write-Error "Could not find version in TOC file"
+    Write-Error "Version not found in TOC"
     exit 1
 }
 
-Write-Host "Building $addonName v$version..." -ForegroundColor Cyan
+Write-Host "Packaging $AddonID version $Ver..." -ForegroundColor Cyan
 
-# Create releases directory if it doesn't exist
-if (-not (Test-Path $releasesDir)) {
-    New-Item -ItemType Directory -Path $releasesDir | Out-Null
-    Write-Host "Created releases directory"
+# Ensure output directory exists
+if (-not (Test-Path $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir | Out-Null
+    Write-Host "Created output directory"
 }
 
-# Define the zip filename
-$zipName = "$addonName-$version.zip"
-$zipPath = Join-Path $releasesDir $zipName
+# Output filename
+$PackageName = "$AddonID-$Ver.zip"
+$PackagePath = Join-Path $OutputDir $PackageName
 
-# Check if this version already exists
-if (Test-Path $zipPath) {
-    Write-Warning "Release $zipName already exists!"
-    $response = Read-Host "Overwrite? (y/N)"
-    if ($response -ne 'y' -and $response -ne 'Y') {
-        Write-Host "Build cancelled."
+# Handle existing package
+if (Test-Path $PackagePath) {
+    Write-Warning "Package $PackageName exists!"
+    $Confirm = Read-Host "Replace? (y/N)"
+    if ($Confirm -ne 'y' -and $Confirm -ne 'Y') {
+        Write-Host "Aborted."
         exit 0
     }
-    Remove-Item $zipPath
+    Remove-Item $PackagePath
 }
 
-# Create a temporary directory for packaging
-$tempDir = Join-Path $env:TEMP "$addonName-build-$(Get-Random)"
-$addonDir = Join-Path $tempDir $addonName
-New-Item -ItemType Directory -Path $addonDir | Out-Null
+# Staging directory
+$StagingRoot = Join-Path $env:TEMP "$AddonID-pkg-$(Get-Random)"
+$StagingDir = Join-Path $StagingRoot $AddonID
+New-Item -ItemType Directory -Path $StagingDir | Out-Null
 
-# Files and folders to include (whitelist approach)
-# This ensures .git, .gitignore, README.md, build.ps1, releases/, etc. are NOT included
-$includePatterns = @(
-    "*.lua",
-    "*.xml",
-    "*.tga",
-    "*.toc"
-)
+# Addon file patterns
+$FilePatterns = @("*.lua", "*.xml", "*.tga", "*.toc")
 
-# Copy matching files to temp directory
-Write-Host "Packaging files:"
-foreach ($pattern in $includePatterns) {
-    $items = Get-ChildItem -Path $scriptDir -Filter $pattern -File -ErrorAction SilentlyContinue
-    foreach ($item in $items) {
-        Write-Host "  + $($item.Name)" -ForegroundColor Gray
-        Copy-Item -Path $item.FullName -Destination $addonDir
+Write-Host "Including files:"
+foreach ($Pattern in $FilePatterns) {
+    $Matches = Get-ChildItem -Path $BaseDir -Filter $Pattern -File -ErrorAction SilentlyContinue
+    foreach ($File in $Matches) {
+        Write-Host "  - $($File.Name)" -ForegroundColor Gray
+        Copy-Item -Path $File.FullName -Destination $StagingDir
     }
 }
 
-# Copy libs folder if it exists
-$libsSource = Join-Path $scriptDir "libs"
-$libsDest = Join-Path $addonDir "libs"
-if (Test-Path $libsSource) {
-    Write-Host "  + libs/" -ForegroundColor Gray
-    Copy-Item -Path $libsSource -Destination $libsDest -Recurse
+# Include libs directory
+$LibsPath = Join-Path $BaseDir "libs"
+$LibsDest = Join-Path $StagingDir "libs"
+if (Test-Path $LibsPath) {
+    Write-Host "  - libs/" -ForegroundColor Gray
+    Copy-Item -Path $LibsPath -Destination $LibsDest -Recurse
 }
 
-# Create the zip file
-Write-Host "Creating $zipName..."
-Compress-Archive -Path $addonDir -DestinationPath $zipPath -Force
+# Create archive
+Write-Host "Generating $PackageName..."
+Compress-Archive -Path $StagingDir -DestinationPath $PackagePath -Force
 
-# Cleanup temp directory
-Remove-Item -Path $tempDir -Recurse -Force
+# Cleanup
+Remove-Item -Path $StagingRoot -Recurse -Force
 
-# Verify the zip was created
-if (Test-Path $zipPath) {
-    $zipSize = (Get-Item $zipPath).Length / 1KB
+# Report results
+if (Test-Path $PackagePath) {
+    $SizeKB = (Get-Item $PackagePath).Length / 1KB
     Write-Host ""
-    Write-Host "Successfully created release!" -ForegroundColor Green
-    Write-Host "  File: $zipPath" -ForegroundColor Green
-    Write-Host "  Size: $([math]::Round($zipSize, 2)) KB" -ForegroundColor Green
+    Write-Host "Package created successfully!" -ForegroundColor Green
+    Write-Host "  Path: $PackagePath" -ForegroundColor Green
+    Write-Host "  Size: $([math]::Round($SizeKB, 2)) KB" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Ready to upload to CurseForge!" -ForegroundColor Yellow
+    Write-Host "Ready for distribution!" -ForegroundColor Yellow
 } else {
-    Write-Error "Failed to create zip file"
+    Write-Error "Package creation failed"
     exit 1
 }

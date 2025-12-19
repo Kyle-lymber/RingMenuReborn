@@ -1,0 +1,95 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+    <Frame name="RadialWheelSettingsPanel" hidden="true">
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="$parentHeader" text="RingMenu Reborn" inherits="GameFontNormalLarge" justifyH="LEFT" justifyV="TOP">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset x="16" y="-16"/>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+                <FontString name="$parentDescription" text="Create and customize radial action wheels. Each wheel has its own keybinding and appearance settings." inherits="GameFontHighlightSmall" nonspacewrap="true" justifyH="LEFT" justifyV="TOP">
+                    <Anchors>
+                        <Anchor point="TOPLEFT" relativeTo="$parentHeader" relativePoint="BOTTOMLEFT">
+                            <Offset x="0" y="-8"/>
+                        </Anchor>
+                        <Anchor point="RIGHT">
+                            <Offset x="-32" y="0"/>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            <Frame name="$parentSelector" inherits="UIDropDownMenuTemplate" enableMouse="true">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="$parentDescription" relativePoint="BOTTOMLEFT">
+                        <Offset x="-15" y="-24"/>
+                    </Anchor>
+                </Anchors>
+                <Layers>
+                    <Layer level="BACKGROUND">
+                        <FontString name="$parentPrompt" inherits="GameFontNormal" text="Select Wheel">
+                            <Anchors>
+                                <Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT">
+                                    <Offset x="16" y="3"/>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
+            <Button name="$parentNewWheel" inherits="UIPanelButtonTemplate" text="+">
+                <Size x="15" y="17"/>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="$parentSelector" relativePoint="RIGHT">
+                        <Offset x="-8" y="3"/>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>
+                        RadialWheelPanel_AddWheel()
+                    </OnClick>
+                </Scripts>
+            </Button>
+            <Button name="$parentDeleteWheel" inherits="UIPanelButtonTemplate" text="–">
+                <Size x="15" y="17"/>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="$parentNewWheel" relativePoint="RIGHT">
+                        <Offset x="4" y="0"/>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>
+                        RadialWheelPanel_RemoveWheel()
+                    </OnClick>
+                </Scripts>
+            </Button>
+            <Frame name="$parentConfig" inherits="BackdropTemplate">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="$parentSelector" relativePoint="BOTTOMLEFT">
+                        <Offset x="15" y="-2"/>
+                    </Anchor>
+                    <Anchor point="BOTTOMRIGHT" relativeTo="$parent" relativePoint="BOTTOMRIGHT">
+                        <Offset x="-15" y="15"/>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnLoad>
+                        self:SetBackdrop({
+                            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                            tile = true,
+                            tileEdge = true,
+                            tileSize = 16,
+                            edgeSize = 16,
+                            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+                        })
+                        self:SetBackdropColor(0.0, 0.0, 0.0, 0.5)
+                    </OnLoad>
+                </Scripts>
+            </Frame>
+        </Frames>
+    </Frame>
+</Ui>

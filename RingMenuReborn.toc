@@ -1,12 +1,11 @@
 ## Interface: 11506
 ## Title: RingMenu Reborn
-## Notes: Adds a circular action bar that can be summoned by a click of a (mouse) button. Updated for Classic Era 1.15.x.
-## Author: Original by jsb, Updated 2025
-## Version: 3.0.0
-## SavedVariablesPerCharacter: RingMenuReborn_globalConfig, RingMenuReborn_ringConfig
+## Notes: A radial action menu system with customizable wheels that appear at your cursor.
+## Author: Sleepy
+## Version: 1.0.0
+## SavedVariablesPerCharacter: RadialWheelDB, RadialWheelProfiles
 ## OptionalDeps: Masque
 libs/LibStub.lua
-copy.lua
-main.lua
-options.lua
-RingMenuRebornOptionsPanel.xml
+Core.lua
+Settings.lua
+RadialWheelPanel.xml
