@@ -49,6 +49,7 @@ Addon.CloneTable = CloneTable
 Addon.ApplyDefaults = ApplyDefaults
 
 -- Determines which slot the cursor is pointing at based on angle from wheel center
+-- Each slice is centered on its button, so boundaries fall between buttons
 local function GetHoveredSlot(container, profile)
     local centerX, centerY = container:GetCenter()
     local cursorX, cursorY = GetCursorPosition()
@@ -66,31 +67,61 @@ local function GetHoveredSlot(container, profile)
         cursorAngle = cursorAngle + TWO_PI
     end
 
-    -- First button starts at top (90 deg) and goes clockwise
+    local sliceWidth = TWO_PI / profile.slotCount
+    local halfSlice = sliceWidth / 2
     local rotationRadians = profile.rotation * math.pi / 180
-    local angleDifference = (math.pi / 2 - rotationRadians) - cursorAngle
+
+    -- First button is at top (90 deg / pi/2). Offset by half slice so boundaries fall between buttons
+    local angleDifference = (math.pi / 2 - rotationRadians + halfSlice) - cursorAngle
     while angleDifference < 0 do angleDifference = angleDifference + TWO_PI end
     while angleDifference >= TWO_PI do angleDifference = angleDifference - TWO_PI end
 
-    local slotIndex = math.floor(angleDifference / (TWO_PI / profile.slotCount)) + 1
+    local slotIndex = math.floor(angleDifference / sliceWidth) + 1
     return math.max(1, math.min(slotIndex, profile.slotCount))
 end
 
-local function UpdateQuickCastHighlight(container, hoveredSlot)
+-- Adds a glow texture behind a button for hover highlight
+local function CreateButtonGlow(button)
+    if button.glowTexture then return end
+
+    local glow = button:CreateTexture(nil, "BACKGROUND", nil, -1)
+    glow:SetPoint("CENTER", button, "CENTER", 0, 0)
+    glow:SetSize(button:GetWidth() * 2, button:GetHeight() * 2)
+    glow:SetTexture("Interface\\SpellActivationOverlay\\IconAlert")
+    glow:SetTexCoord(0.00781250, 0.50781250, 0.27734375, 0.52734375)
+    glow:SetVertexColor(1, 0.9, 0.5, 0.9)
+    glow:Hide()
+
+    button.glowTexture = glow
+end
+
+local function UpdateQuickCastHighlight(container, hoveredSlot, profile)
     if not container.actions then return end
+
     for index, button in ipairs(container.actions) do
+        -- Create glow on first use
+        if not button.glowTexture then
+            CreateButtonGlow(button)
+        end
+
         if index == hoveredSlot then
             button:LockHighlight()
+            button.glowTexture:Show()
         else
             button:UnlockHighlight()
+            button.glowTexture:Hide()
         end
     end
 end
 
 local function ClearQuickCastHighlight(container)
     if not container.actions then return end
+
     for _, button in ipairs(container.actions) do
         button:UnlockHighlight()
+        if button.glowTexture then
+            button.glowTexture:Hide()
+        end
     end
 end
 
@@ -185,7 +216,7 @@ function Addon:BuildWheel(wheelIndex)
             end
             local hoveredSlot = GetHoveredSlot(self, wheelProfile)
             self.toggle:SetAttribute("quickcastslot", hoveredSlot)
-            UpdateQuickCastHighlight(self, hoveredSlot)
+            UpdateQuickCastHighlight(self, hoveredSlot, wheelProfile)
         end)
 
         container:SetScript("OnHide", function(self)
