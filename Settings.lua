@@ -14,14 +14,14 @@ local function ClearBindings(idx)
     end
 end
 
-local function GetBindingText(idx)
+local function GetBindingDisplayText(idx)
     local keys = GetBoundKeys(idx)
-    return #keys > 0 and GetBindingText(keys[1]) or "(unbound)"
+    return #keys > 0 and _G.GetBindingText(keys[1]) or "(unbound)"
 end
 
 local function GetSelectorText(idx)
     local profile = RadialWheelProfiles[idx]
-    local text = GetBindingText(idx)
+    local text = GetBindingDisplayText(idx)
     if profile.label and #profile.label > 0 then
         return text .. ": " .. profile.label
     end
@@ -145,7 +145,7 @@ function Addon:SetupSettingsPanel()
             w:SetCursorPosition(0)
             w:ClearFocus()
         elseif spec.kind == "keybind" then
-            w:SetText(GetBindingText(panel.activeWheel))
+            w:SetText(GetBindingDisplayText(panel.activeWheel))
         elseif spec.kind == "colorpicker" then
             if val then
                 w.swatch:SetVertexColor(val.red, val.green, val.blue, val.alpha)
@@ -225,7 +225,7 @@ function Addon:SetupSettingsPanel()
             w:SetScript("OnClick", function(self)
                 if self.capturing then
                     self.capturing = false
-                    self:SetText(GetBindingText(panel.activeWheel))
+                    self:SetText(GetBindingDisplayText(panel.activeWheel))
                     self:EnableKeyboard(false)
                 else
                     self.capturing = true
@@ -240,7 +240,7 @@ function Addon:SetupSettingsPanel()
 
                 if key == "ESCAPE" then
                     self.capturing = false
-                    self:SetText(GetBindingText(panel.activeWheel))
+                    self:SetText(GetBindingDisplayText(panel.activeWheel))
                     self:EnableKeyboard(false)
                     return
                 end
@@ -257,7 +257,7 @@ function Addon:SetupSettingsPanel()
                 OnChange(spec, combo)
 
                 self.capturing = false
-                self:SetText(GetBindingText(panel.activeWheel))
+                self:SetText(GetBindingDisplayText(panel.activeWheel))
                 self:EnableKeyboard(false)
             end)
 
