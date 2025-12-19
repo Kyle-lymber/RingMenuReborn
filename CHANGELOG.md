@@ -2,7 +2,7 @@
 
 ## [1.0.0] - 2025-12-19
 
-Complete rewrite of Ring Menu from the ground up. This is a new addon that achieves feature parity with the original while being fully compatible with the current Classic Era client.
+Initial release of RingMenu Reborn - a radial action wheel addon built from scratch for WoW Classic Era.
 
 ### Features
 - Radial action wheel that appears at cursor position
